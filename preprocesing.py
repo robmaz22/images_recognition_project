@@ -2,6 +2,8 @@ import shutil
 import os
 from random import shuffle
 import argparse
+from PIL import Image
+
 
 parser = argparse.ArgumentParser(description='Preparing data for neural network')
 parser.add_argument('-p', "--path", help="Path to images directory")
@@ -9,16 +11,22 @@ args = parser.parse_args()
 
 zip_path = args.path
 file_path = zip_path.split('.')[0]
+image_size = (150, 150)
 
 print(f'[INFO] Wypakowywanie pliku {zip_path.split(".")[1]}...')
 shutil.unpack_archive(zip_path, '/'.join(zip_path.split('/')[:-1]))
 
 classes = ['frog', 'cow']
 
+print(f'[INFO] Zmiana nazw plików, usuwanie kanału alpha i zmiana rozmiaru na {image_size}...')
 for class_ in classes:
     i = 1
     for name in os.listdir(f'{file_path}/{class_}'):
-        os.rename(f'{file_path}/{class_}/{name}', f'{file_path}/{class_}/{i:04d}.jpg')
+        new_name = f'{file_path}/{class_}/{i:04d}.jpg'
+        os.rename(f'{file_path}/{class_}/{name}', new_name)
+
+        Image.open(new_name).convert('RGB').resize(image_size).save(new_name)
+
         i += 1
 
 dirs = ['train', 'test', 'valid']
