@@ -6,22 +6,17 @@ import argparse
 
 parser = argparse.ArgumentParser(description='Preparing data for neural network')
 parser.add_argument('-p', "--path", help="Path to images directory")
-args = parser.parse_args()
+args = vars(parser.parse_args())
 
-zip_path = args.path
-file_path = zip_path.split('.')[0]
-image_size = (150, 150)
-
-print(f'[INFO] Wypakowywanie pliku {zip_path.split(".")[1]}...')
-shutil.unpack_archive(zip_path, '/'.join(zip_path.split('/')[:-1]))
+file_path = args['path']
 
 classes = ['frog', 'cow']
 
-print(f'[INFO] Zmiana nazw plików, usuwanie kanału alpha i zmiana rozmiaru na {image_size}...')
+print(f'[INFO] Zmiana nazw plików...')
 for class_ in classes:
     i = 1
     for name in os.listdir(f'{file_path}/{class_}'):
-        new_name = f'{file_path}/{class_}/{i:04d}.jpg'
+        new_name = f'{file_path}/{class_}/{i:06d}.jpg'
         os.rename(f'{file_path}/{class_}/{name}', new_name)
         i += 1
 
@@ -39,6 +34,7 @@ train_size = int(number_of_pictures * 0.7)
 test_size = int(number_of_pictures * 0.2)
 valid_size = int(number_of_pictures * 0.1)
 
+print(f'[INFO] Podział danych ({number_of_pictures}) dla jednej klasy: ')
 print(f'Liczba danych do trenowania: {train_size}')
 print(f'Liczba danych do testu: {test_size}')
 print(f'Liczba danych do walidacji: {valid_size}')
@@ -55,7 +51,7 @@ lists = {'frog': frog_fnames,
 print('[INFO] Kopiowanie plików do odpowiednich folderów...')
 for class_ in classes:
     idx = 0
-    while idx < 400:
+    while idx < number_of_pictures:
 
         scr = os.path.join(file_path, class_, lists[class_][idx])
         if idx < train_size:
@@ -66,4 +62,5 @@ for class_ in classes:
             dst = os.path.join(file_path, 'data', 'valid', class_, lists[class_][idx])
         shutil.copy(scr, dst)
         idx += 1
+
 print('[INFO] Zakończono preprocesing danych.')
