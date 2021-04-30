@@ -10,19 +10,24 @@ from sklearn.metrics import classification_report
 from sklearn.metrics import accuracy_score
 from tensorflow.keras.models import load_model
 
+import argparse
 from datetime import datetime
 import pandas as pd
 import os
 
-
 print(f'Bieżąca wersja TensorFlow: {tf.__version__}')
 
+parser = argparse.ArgumentParser()
+parser.add_argument('-p', '--path', required=True, help='Path to images')
+parser.add_argument('-e', '--epochs', default=5, type=int, help='number of epochs')
+args = vars(parser.parse_args())
+
 learning_rate = 0.001
-EPOCHS = 30
+EPOCHS = args['epochs']
 BATCH_SIZE = 32
 INPUT_SHAPE = (150, 150, 3)
-TRAIN_DIR = '06_classification/images (1)/data/train'
-VALID_DIR = '06_classification/images (1)/data/valid'
+TRAIN_DIR = os.path.join(args['path'], 'train')
+VALID_DIR = os.path.join(args['path'], 'valid')
 
 train_datagen = ImageDataGenerator(
     rotation_range=25,
@@ -72,7 +77,7 @@ model.compile(
 model.summary()
 
 dt = datetime.now().strftime('%d_%m_%Y_%H_%M')
-filepath = os.path.join('06_classification/output', 'my_model_' + dt + '.hdf5')
+filepath = os.path.join('output', 'model_' + dt + '.hdf5')
 checkpoint = ModelCheckpoint(filepath=filepath, monitor='val_accuracy', save_best_only=True)
 
 print('[INFO] Trenowanie modelu...')
@@ -84,27 +89,27 @@ history = model.fit(
     epochs=1,
     callbacks=[checkpoint])
 
-datagen = ImageDataGenerator(
+test_gen = ImageDataGenerator(
     rescale=1. / 255.
 )
 
-generator = datagen.flow_from_directory(
-    directory='06_classification/images (1)/data/test',
+test_generator = test_gen.flow_from_directory(
+    directory=os.path.join(args['path'], 'test'),
     target_size=(150, 150),
     batch_size=1,
     class_mode='binary',
     shuffle=False
 )
 
-print('[INFO] Wczytywanie modelu...')
+print('[INFO] Wczytywanie wytrenowanego modelu...')
 model = load_model(filepath)
 
-y_prob = model.predict(generator, workers=1)
+y_prob = model.predict(test_generator, workers=1)
 y_prob = y_prob.ravel()
 
-y_true = generator.classes
+y_true = test_generator.classes
 
-predictions = pd.DataFrame({'y_prob': y_prob, 'y_true': y_true}, index=generator.filenames)
+predictions = pd.DataFrame({'y_prob': y_prob, 'y_true': y_true}, index=test_generator.filenames)
 predictions['y_pred'] = predictions['y_prob'].apply(lambda x: 1 if x > 0.5 else 0)
 predictions['is_incorrect'] = (predictions['y_true'] != predictions['y_pred']) * 1
 errors = list(predictions[predictions['is_incorrect'] == 1].index)
@@ -113,12 +118,8 @@ print(predictions.head())
 y_pred = predictions['y_pred'].values
 
 print(f'[INFO] Macierz konfuzji:\n{confusion_matrix(y_true, y_pred)}')
-print(f'[INFO] Raport klasyfikacji:\n{classification_report(y_true, y_pred, target_names=generator.class_indices.keys())}')
+print(f'[INFO] Raport klasyfikacji:\n{classification_report(y_true, y_pred, target_names=test_generator.class_indices.keys())}')
 print(f'[INFO] Dokładność modelu: {accuracy_score(y_true, y_pred) * 100:.2f}%')
-
-label_map = generator.class_indices
-label_map = dict((v, k) for k, v in label_map.items())
-predictions['class'] = predictions['y_pred'].apply(lambda x: label_map[x])
 
 print(f'[INFO] Błędnie sklasyfikowano: {len(errors)}\n[INFO] Nazwy plików:')
 for error in errors:
