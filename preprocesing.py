@@ -2,7 +2,6 @@ import shutil
 import os
 from random import shuffle
 import argparse
-from PIL import Image
 
 
 parser = argparse.ArgumentParser(description='Preparing data for neural network')
@@ -24,9 +23,6 @@ for class_ in classes:
     for name in os.listdir(f'{file_path}/{class_}'):
         new_name = f'{file_path}/{class_}/{i:04d}.jpg'
         os.rename(f'{file_path}/{class_}/{name}', new_name)
-
-        Image.open(new_name).convert('RGB').resize(image_size).save(new_name)
-
         i += 1
 
 dirs = ['train', 'test', 'valid']
