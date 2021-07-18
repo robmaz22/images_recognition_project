@@ -1,129 +1,165 @@
+import warnings
+
+warnings.filterwarnings('ignore')
+
 import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dense, Flatten
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.callbacks import ModelCheckpoint
-from tensorflow.keras.optimizers import Adam
-
-from sklearn.metrics import confusion_matrix
-from sklearn.metrics import classification_report
-from sklearn.metrics import accuracy_score
-from tensorflow.keras.models import load_model
-
+import os
+import pandas as pd
 import argparse
 from datetime import datetime
-import pandas as pd
-import os
+from tensorflow.keras.preprocessing import image_dataset_from_directory
+from tensorflow.keras.models import Sequential
+from tensorflow.keras import layers
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
-print(f'Bieżąca wersja TensorFlow: {tf.__version__}')
 
-parser = argparse.ArgumentParser()
-parser.add_argument('-p', '--path', required=True, help='Path to images')
-parser.add_argument('-e', '--epochs', default=5, type=int, help='number of epochs')
-args = vars(parser.parse_args())
+def plot_hist(history, output):
+    hist = pd.DataFrame(history.history)
+    hist['epoch'] = history.epoch
 
-learning_rate = 0.001
-EPOCHS = args['epochs']
-BATCH_SIZE = 32
-INPUT_SHAPE = (150, 150, 3)
-TRAIN_DIR = os.path.join(args['path'], 'train')
-VALID_DIR = os.path.join(args['path'], 'valid')
+    fig = make_subplots(rows=1, cols=2, subplot_titles=['Dokładność modelu', 'Funkcja straty modelu'])
 
-train_datagen = ImageDataGenerator(
-    rotation_range=25,
-    rescale=1. / 255.,
-    width_shift_range=0.1,
-    height_shift_range=0.1,
-    shear_range=0.1,
-    zoom_range=0.1,
-    horizontal_flip=True,
-    fill_mode='nearest'
-)
+    fig.add_trace(
+        go.Scatter(x=hist['epoch'],
+                   y=hist['accuracy'] * 100,
+                   name='Zbiór treningowy',
+                   mode='markers+lines'),
+        row=1,
+        col=1)
 
-valid_datagen = ImageDataGenerator(rescale=1. / 255.)
+    fig.add_trace(
+        go.Scatter(x=hist['epoch'],
+                   y=hist['val_accuracy'] * 100,
+                   name='Zbiór walidacyjny',
+                   mode='markers+lines'),
+        row=1,
+        col=1)
 
-train_generator = train_datagen.flow_from_directory(
-    directory=TRAIN_DIR,
-    target_size=INPUT_SHAPE[:2],
-    batch_size=BATCH_SIZE,
-    class_mode='binary'
-)
+    fig.add_trace(
+        go.Scatter(x=hist['epoch'],
+                   y=hist['loss'],
+                   mode='markers+lines',
+                   name='Zbiór treningowy', ),
 
-valid_generator = valid_datagen.flow_from_directory(
-    directory=VALID_DIR,
-    target_size=INPUT_SHAPE[:2],
-    batch_size=BATCH_SIZE,
-    class_mode='binary'
-)
+        row=1,
+        col=2)
+    fig.add_trace(
+        go.Scatter(x=hist['epoch'],
+                   y=hist['val_loss'],
+                   mode='markers+lines',
+                   name='Zbiór walidacyjny', ),
+        row=1,
+        col=2)
 
-model = Sequential()
-model.add(Conv2D(filters=16, kernel_size=(3, 3), input_shape=INPUT_SHAPE, activation='relu'))
-model.add(MaxPooling2D())
+    fig.update_yaxes(title_text='Dokładność [%]', row=1, col=1)
+    fig.update_yaxes(title_text='Wartość funkcji straty', row=1, col=2)
+    fig.update_xaxes(title_text='Epoki', row=1, col=1)
+    fig.update_xaxes(title_text='Epoki', row=1, col=2)
 
-model.add(Conv2D(filters=32, kernel_size=(3, 3), activation='relu'))
-model.add(MaxPooling2D())
+    fig.update_layout(title='<b>Porównanie statystyk modelu<b>')
+    fig.show()
 
-model.add(Conv2D(filters=64, kernel_size=(3, 3), activation='relu'))
-model.add(MaxPooling2D())
+    fig.write_html(output)
 
-model.add(Flatten())
-model.add(Dense(units=256, activation='relu'))
-model.add(Dense(units=128, activation='relu'))
-model.add(Dense(units=64, activation='relu'))
-model.add(Dense(units=1, activation='sigmoid'))
 
-model.compile(
-    optimizer=Adam(learning_rate=learning_rate),
-    loss='binary_crossentropy',
-    metrics=['accuracy'])
+def build_model():
+    model = Sequential()
+    model.add(layers.InputLayer(input_shape=(200, 200, 3)))
+    model.add(layers.experimental.preprocessing.Rescaling(1. / 255))
+    model.add(layers.Conv2D(filters=32, kernel_size=(3, 3), activation='relu'))
+    model.add(layers.MaxPool2D(pool_size=(2, 2)))
+    model.add(layers.Conv2D(filters=64, kernel_size=(3, 3), activation='relu'))
+    model.add(layers.MaxPool2D(pool_size=(2, 2)))
+    model.add(layers.Conv2D(filters=128, kernel_size=(3, 3), activation='relu'))
+    model.add(layers.MaxPool2D(pool_size=(2, 2)))
+    model.add(layers.Conv2D(filters=64, kernel_size=(3, 3), activation='relu'))
+    model.add(layers.MaxPool2D(pool_size=(2, 2)))
+    model.add(layers.Conv2D(filters=32, kernel_size=(3, 3), activation='relu', ))
+    model.add(layers.Dropout(0.2))
+    model.add(layers.Flatten())
+    model.add(layers.Dense(units=128, activation='relu'))
+    model.add(layers.Dense(units=1, activation='sigmoid'))
 
-model.summary()
+    model.compile(optimizer='adam',
+                  loss='binary_crossentropy',
+                  metrics=['accuracy'])
+    model.summary()
 
-dt = datetime.now().strftime('%d_%m_%Y_%H_%M')
-filepath = os.path.join('output', 'model_' + dt + '.hdf5')
-checkpoint = ModelCheckpoint(filepath=filepath, monitor='val_accuracy', save_best_only=True)
+    return model
 
-print('[INFO] Trenowanie modelu...')
-history = model.fit(
-    x=train_generator,
-    steps_per_epoch=train_generator.samples // BATCH_SIZE,
-    validation_data=valid_generator,
-    validation_steps=valid_generator.samples // BATCH_SIZE,
-    epochs=1,
-    callbacks=[checkpoint])
 
-test_gen = ImageDataGenerator(
-    rescale=1. / 255.
-)
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-p', '--path', required=True, help='Path to datasets')
+    parser.add_argument('-e', '--epochs', default=100, type=int, help='Number of epochs')
+    args = vars(parser.parse_args())
 
-test_generator = test_gen.flow_from_directory(
-    directory=os.path.join(args['path'], 'test'),
-    target_size=(150, 150),
-    batch_size=1,
-    class_mode='binary',
-    shuffle=False
-)
+    return args
 
-print('[INFO] Wczytywanie wytrenowanego modelu...')
-model = load_model(filepath)
 
-y_prob = model.predict(test_generator, workers=1)
-y_prob = y_prob.ravel()
+def run():
+    print(f'Bieżąca wersja TensorFlow: {tf.__version__}')
+    print('[INFO] Wczytywanie danych do trenowania...')
+    args = get_args()
 
-y_true = test_generator.classes
+    train_dir = f"{args['path']}/train"
+    valid_dir = f"{args['path']}/valid"
+    test_dir = f"{args['path']}/test"
+    batch_size = 32
+    img_size = (200, 200)
+    epochs = args['epochs']
 
-predictions = pd.DataFrame({'y_prob': y_prob, 'y_true': y_true}, index=test_generator.filenames)
-predictions['y_pred'] = predictions['y_prob'].apply(lambda x: 1 if x > 0.5 else 0)
-predictions['is_incorrect'] = (predictions['y_true'] != predictions['y_pred']) * 1
-errors = list(predictions[predictions['is_incorrect'] == 1].index)
-print(predictions.head())
+    print('* Zbiór testowy:')
+    train_set = image_dataset_from_directory(train_dir,
+                                             seed=123,
+                                             image_size=img_size,
+                                             batch_size=batch_size)
 
-y_pred = predictions['y_pred'].values
+    print('* Zbiór walidacyjny:')
+    valid_set = image_dataset_from_directory(valid_dir,
+                                             seed=123,
+                                             image_size=img_size,
+                                             batch_size=batch_size)
 
-print(f'[INFO] Macierz konfuzji:\n{confusion_matrix(y_true, y_pred)}')
-print(f'[INFO] Raport klasyfikacji:\n{classification_report(y_true, y_pred, target_names=test_generator.class_indices.keys())}')
-print(f'[INFO] Dokładność modelu: {accuracy_score(y_true, y_pred) * 100:.2f}%')
+    print('Test set:')
+    test_set = image_dataset_from_directory(test_dir,
+                                            seed=123,
+                                            image_size=img_size,
+                                            batch_size=batch_size)
 
-print(f'[INFO] Błędnie sklasyfikowano: {len(errors)}\n[INFO] Nazwy plików:')
-for error in errors:
-    print(error)
+    print('[INFO] Tworzenie sieci neuronowej...')
+    model = build_model()
+
+    print('[INFO] Trenowanie modelu...')
+
+    if not os.path.exists('output'):
+        os.mkdir('output')
+
+    dt = datetime.now().strftime('%d_%m_%Y_%H_%M')
+    es = EarlyStopping(monitor='val_loss', patience=3)
+    filepath_model = os.path.join('output', 'model_' + dt + '.hdf5')
+    mc = ModelCheckpoint(filepath=filepath_model,
+                         save_weights_only=True,
+                         monitor='val_accuracy',
+                         mode='max',
+                         save_best_only=True)
+
+    history = model.fit(x=train_set,
+                        epochs=epochs,
+                        validation_data=valid_set,
+                        callbacks=[es, mc])
+
+    print('[INFO] Eksport statystyk do pliku html...')
+    filepath_stat = os.path.join('output', 'model_stat_' + dt + '.html')
+    plot_hist(history, filepath_stat)
+
+    print('[INFO] Wczytywanie wytrenowanego modelu...')
+    model.load_weights(filepath_model)
+    accuracy = model.evaluate(test_set)
+    print(f'[INFO] Ocena uzyskanego modelu: {round(accuracy[1] * 100, 2)}%')
+
+
+if __name__ == '__main__':
+    run()

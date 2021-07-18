@@ -1,5 +1,9 @@
 # Link do zbioru danych: https://www.kaggle.com/kritikseth/fruit-and-vegetable-image-recognition
 
+import warnings
+
+warnings.filterwarnings('ignore')
+
 import tensorflow as tf
 import os
 import pandas as pd
@@ -10,41 +14,54 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras import layers
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
 def plot_hist(history, output):
     hist = pd.DataFrame(history.history)
     hist['epoch'] = history.epoch
 
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=hist['epoch'],
-                             y=hist['accuracy'] * 100,
-                             name='Zbiór treningowy',
-                             mode='markers+lines'))
-    fig.add_trace(go.Scatter(x=hist['epoch'],
-                             y=hist['val_accuracy'] * 100,
-                             name='Zbiór walidacyjny',
-                             mode='markers+lines'))
-    fig.update_layout(width=1000,
-                      height=500,
-                      title='Porównanie dokładności modelu',
-                      xaxis_title='Epoki',
-                      yaxis_title='Dokładność [%]')
+    fig = make_subplots(rows=1, cols=2, subplot_titles=['Dokładność modelu', 'Funkcja straty modelu'])
 
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=hist['epoch'],
-                             y=hist['loss'],
-                             name='Zbiór treningowy',
-                             mode='markers+lines'))
-    fig.add_trace(go.Scatter(x=hist['epoch'],
-                             y=hist['val_loss'],
-                             name='Zbiór walidacyjny',
-                             mode='markers+lines'))
-    fig.update_layout(width=1000,
-                      height=500,
-                      title='Porównanie funkcji strat',
-                      xaxis_title='Epoki',
-                      yaxis_title='Wartość funkcji straty')
+    fig.add_trace(
+        go.Scatter(x=hist['epoch'],
+                   y=hist['accuracy'] * 100,
+                   name='Zbiór treningowy',
+                   mode='markers+lines'),
+        row=1,
+        col=1)
+
+    fig.add_trace(
+        go.Scatter(x=hist['epoch'],
+                   y=hist['val_accuracy'] * 100,
+                   name='Zbiór walidacyjny',
+                   mode='markers+lines'),
+        row=1,
+        col=1)
+
+    fig.add_trace(
+        go.Scatter(x=hist['epoch'],
+                   y=hist['loss'],
+                   mode='markers+lines',
+                   name='Zbiór treningowy', ),
+
+        row=1,
+        col=2)
+    fig.add_trace(
+        go.Scatter(x=hist['epoch'],
+                   y=hist['val_loss'],
+                   mode='markers+lines',
+                   name='Zbiór walidacyjny', ),
+        row=1,
+        col=2)
+
+    fig.update_yaxes(title_text='Dokładność [%]', row=1, col=1)
+    fig.update_yaxes(title_text='Wartość funkcji straty', row=1, col=2)
+    fig.update_xaxes(title_text='Epoki', row=1, col=1)
+    fig.update_xaxes(title_text='Epoki', row=1, col=2)
+
+    fig.update_layout(title='<b>Porównanie statystyk modelu<b>')
+    fig.show()
 
     fig.write_html(output)
 
@@ -119,6 +136,7 @@ def run():
     model = build_model()
 
     print('[INFO] Trenowanie modelu...')
+    os.mkdir('output')
     dt = datetime.now().strftime('%d_%m_%Y_%H_%M')
     es = EarlyStopping(monitor='val_loss', patience=3)
     filepath_model = os.path.join('output', 'model_' + dt + '.hdf5')
@@ -140,7 +158,7 @@ def run():
     print('[INFO] Wczytywanie wytrenowanego modelu...')
     model.load_weights(filepath_model)
     accuracy = model.evaluate(test_set)
-    print(f'[INFO] Ocena uzyskanego modelu: {round(accuracy * 100, 2)}%')
+    print(f'[INFO] Ocena uzyskanego modelu: {round(accuracy[1] * 100, 2)}%')
 
 
 if __name__ == '__main__':
